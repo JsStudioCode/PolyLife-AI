@@ -1,6 +1,6 @@
 # PolyLife AI — AI-Based Plastic Degradation Assessment & Sustainable Recycling Decision Support System
 
-Real-time interactive web application combining chemistry-informed photo-oxidation kinetics, Scikit-Learn predictive models, multi-criteria **TOPSIS** recycling pathway optimization, **Kaggle** dataset integration, and **Firebase Cloud Firestore** live synchronization.
+An AI-powered plastic degradation assessment and sustainable recycling decision-support system that uses machine learning and FTIR spectroscopy to analyse polymer degradation, identify plastic types, and recommend recycling strategies. The app combines chemistry-informed photo-oxidation kinetics, Scikit-Learn predictive models, multi-criteria **TOPSIS** recycling pathway optimization, **Kaggle** dataset integration, and **Firebase Cloud Firestore** live synchronization.
 
 ## Architecture
 
