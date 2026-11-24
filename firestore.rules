@@ -1,0 +1,276 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // This security rules file assumes the following data structures:
+    //
+    // Collection: polylife_assessments
+    // Document ID: {docId} (1..64 chars, matches document `id` field, e.g., PL-XXXXXXXX)
+    // Fields:
+    //   - id: string (required, 1..64 chars, must equal docId, immutable on update)
+    //   - sample_name: string (required, 1..120 chars)
+    //   - batch_id: string (required, 1..64 chars)
+    //   - poly: string (required, enum: HDPE | LDPE | PP | PS | PET | PVC)
+    //   - t: number (required, 0..100000) - exposure time (hours)
+    //   - I: number (required, > 0 and <= 20) - UV irradiance
+    //   - T: number (required, -50..250) - temperature (deg C)
+    //   - RH: number (required, 0..100) - relative humidity (%)
+    //   - CI: number (required, 0..20) - carbonyl index
+    //   - HI: number (required, 0..20) - hydroxyl index
+    //   - dXc: number (required, -50..100) - crystallinity change (%)
+    //   - ret: number (required, 0..1) - Mw retention ratio
+    //   - stage: string (required, enum: Low | Moderate | Severe)
+    //   - stage_probs: map (required, keys only Low|Moderate|Severe, values number 0..1)
+    //   - route: string (required, 1..80 chars) - recommended recycling route
+    //   - topsis_scores: list (required, max 6 numbers, each 0..1)
+    //   - source: string (required, 1..120 chars)
+    //   - created_at: number (required, > 0 and <= 1e13, immutable on update)
+    //
+    // Collection: polylife_weights
+    // Document ID: {profileId} (1..64 chars, e.g., active_profile)
+    // Fields:
+    //   - weights: list (required, exactly 5 numbers, each 0..1)
+    //   - updated_at: number (required, > 0 and <= 1e13)
+    //
+    // Collection: polylife_datasets
+    // Document ID: {datasetId} (1..64 chars, e.g., DS-XXXXXXXX)
+    // Fields:
+    //   - id: string (optional, 1..64 chars, must equal datasetId if present, immutable)
+    //   - title: string (required, 1..200 chars)
+    //   - source: string (required, 1..200 chars)
+    //   - rows: number (required, >= 0 and <= 10000000)
+    //   - columns: list (optional, max 100 items)
+    //   - status: string (optional, 1..40 chars)
+    //   - kaggle_slug: string or null (optional, <= 160 chars if string)
+    //   - mode: string (optional, 1..64 chars)
+    //   - loaded_at: number (optional, > 0 and <= 1e13)
+    //   - created_at: number (required, > 0 and <= 1e13, immutable on update)
+    //
+    // Access Model Note:
+    //   PolyLife AI's current real-time lab dashboard (static/firebase-bridge.js)
+    //   connects via the Firebase Web SDK without requiring Firebase Auth sign-in.
+    //   Rules therefore permit client read/write/delete on the 3 dashboard
+    //   collections with strict schema, type, enum, range, and size enforcement,
+    //   while default-denying all other paths. If Firebase Auth is enabled later,
+    //   gate access with `isAuthenticated()` (and owner checks where applicable).
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated (ready for optional Firebase Auth)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource (for user-owned documents)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if user is owner based on document's uid field
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate that immutable fields have not changed on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate string length on a field in request.resource.data
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string (if present, must be string and within length)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate numeric range on a field
+    function isNumberInRange(val, minVal, maxVal) {
+      return val is number && val >= minVal && val <= maxVal;
+    }
+
+    // Validate positive number
+    function isPositive(field) {
+      return request.resource.data[field] is number && request.resource.data[field] > 0;
+    }
+
+    // Validate list type and max size
+    function isValidList(listVal, maxSize) {
+      return listVal is list && listVal.size() <= maxSize;
+    }
+
+    // Validate stage_probs map: only Low/Moderate/Severe keys with 0..1 numbers
+    function isValidStageProbs(probs) {
+      return probs is map &&
+        probs.keys().hasOnly(['Low', 'Moderate', 'Severe']) &&
+        (!('Low' in probs) || isNumberInRange(probs.Low, 0, 1)) &&
+        (!('Moderate' in probs) || isNumberInRange(probs.Moderate, 0, 1)) &&
+        (!('Severe' in probs) || isNumberInRange(probs.Severe, 0, 1));
+    }
+
+    // Validate TOPSIS scores list (up to 6 scores, each a number in 0..1)
+    function isValidTopsisScores(scores) {
+      return isValidList(scores, 6) &&
+        (scores.size() < 1 || isNumberInRange(scores[0], 0, 1)) &&
+        (scores.size() < 2 || isNumberInRange(scores[1], 0, 1)) &&
+        (scores.size() < 3 || isNumberInRange(scores[2], 0, 1)) &&
+        (scores.size() < 4 || isNumberInRange(scores[3], 0, 1)) &&
+        (scores.size() < 5 || isNumberInRange(scores[4], 0, 1)) &&
+        (scores.size() < 6 || isNumberInRange(scores[5], 0, 1));
+    }
+
+    // Validate 5-element TOPSIS weights vector (each weight 0..1)
+    function isValidWeightsList(weights) {
+      return weights is list &&
+        weights.size() == 5 &&
+        isNumberInRange(weights[0], 0, 1) &&
+        isNumberInRange(weights[1], 0, 1) &&
+        isNumberInRange(weights[2], 0, 1) &&
+        isNumberInRange(weights[3], 0, 1) &&
+        isNumberInRange(weights[4], 0, 1);
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidAssessment(data, docId) {
+      let allowedFields = [
+        'id', 'sample_name', 'batch_id', 'poly',
+        't', 'I', 'T', 'RH', 'CI', 'HI', 'dXc', 'ret',
+        'stage', 'stage_probs', 'route', 'topsis_scores',
+        'source', 'created_at'
+      ];
+      let validPolymers = ['HDPE', 'LDPE', 'PP', 'PS', 'PET', 'PVC'];
+      let validStages = ['Low', 'Moderate', 'Severe'];
+
+      return docId.size() >= 1 && docId.size() <= 64 &&
+        hasRequiredFields(allowedFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        validStringLength('id', 1, 64) &&
+        data.id == docId &&
+        validStringLength('sample_name', 1, 120) &&
+        validStringLength('batch_id', 1, 64) &&
+        data.poly is string && data.poly in validPolymers &&
+        isNumberInRange(data.t, 0, 100000) &&
+        data.I is number && data.I > 0 && data.I <= 20 &&
+        isNumberInRange(data.T, -50, 250) &&
+        isNumberInRange(data.RH, 0, 100) &&
+        isNumberInRange(data.CI, 0, 20) &&
+        isNumberInRange(data.HI, 0, 20) &&
+        isNumberInRange(data.dXc, -50, 100) &&
+        isNumberInRange(data.ret, 0, 1) &&
+        data.stage is string && data.stage in validStages &&
+        isValidStageProbs(data.stage_probs) &&
+        validStringLength('route', 1, 80) &&
+        isValidTopsisScores(data.topsis_scores) &&
+        validStringLength('source', 1, 120) &&
+        data.created_at is number && data.created_at > 0 && data.created_at <= 10000000000000;
+    }
+
+    function isValidWeightProfile(data, profileId) {
+      let allowedFields = ['weights', 'updated_at'];
+      return profileId.size() >= 1 && profileId.size() <= 64 &&
+        hasRequiredFields(allowedFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        isValidWeightsList(data.weights) &&
+        data.updated_at is number && data.updated_at > 0 && data.updated_at <= 10000000000000;
+    }
+
+    function isValidDatasetMetadata(data, datasetId) {
+      let requiredFields = ['title', 'source', 'rows', 'created_at'];
+      let allowedFields = [
+        'id', 'title', 'source', 'rows', 'columns',
+        'status', 'kaggle_slug', 'mode', 'loaded_at', 'created_at'
+      ];
+      return datasetId.size() >= 1 && datasetId.size() <= 64 &&
+        hasRequiredFields(requiredFields) &&
+        hasOnlyAllowedFields(allowedFields) &&
+        (!('id' in data) || (validStringLength('id', 1, 64) && data.id == datasetId)) &&
+        validStringLength('title', 1, 200) &&
+        validStringLength('source', 1, 200) &&
+        isNumberInRange(data.rows, 0, 10000000) &&
+        (!('columns' in data) || (isValidList(data.columns, 100) &&
+          (data.columns.size() == 0 || (data.columns[0] is string && data.columns[0].size() <= 128)))) &&
+        isValidOptionalString('status', 1, 40) &&
+        (!('kaggle_slug' in data) || data.kaggle_slug == null ||
+          (data.kaggle_slug is string && data.kaggle_slug.size() <= 160)) &&
+        isValidOptionalString('mode', 1, 64) &&
+        (!('loaded_at' in data) || (data.loaded_at is number && data.loaded_at > 0 && data.loaded_at <= 10000000000000)) &&
+        data.created_at is number && data.created_at > 0 && data.created_at <= 10000000000000;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. Plastic degradation assessments synced with lab console & sensor stream
+    match /polylife_assessments/{docId} {
+      allow read: if true;
+      allow create: if isValidAssessment(request.resource.data, docId);
+      allow update: if isValidAssessment(request.resource.data, docId) &&
+        areImmutableFieldsUnchanged(['id', 'created_at']);
+      allow delete: if true;
+    }
+
+    // 2. TOPSIS multi-criteria sustainability weight profiles (e.g., active_profile)
+    match /polylife_weights/{profileId} {
+      allow read: if true;
+      allow create: if isValidWeightProfile(request.resource.data, profileId);
+      allow update: if isValidWeightProfile(request.resource.data, profileId);
+      allow delete: if true;
+    }
+
+    // 3. Optional Kaggle / CSV dataset profile metadata
+    match /polylife_datasets/{datasetId} {
+      allow read: if true;
+      allow create: if isValidDatasetMetadata(request.resource.data, datasetId);
+      allow update: if isValidDatasetMetadata(request.resource.data, datasetId) &&
+        areImmutableFieldsUnchanged(['id', 'created_at']);
+      allow delete: if true;
+    }
+
+    // Default deny all other collections and subcollections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

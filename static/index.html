@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PolyLife AI — Plastic Degradation & Sustainable Recycling Decision Support</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="10" fill="url(#polyGrad)"/>
+            <path d="M18 7L27 12.2V22.8L18 28L9 22.8V12.2L18 7Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="18" cy="17.5" r="3.5" fill="white"/>
+            <defs>
+              <linearGradient id="polyGrad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#10b981"/>
+                <stop offset="1" stop-color="#0ea5e9"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">PolyLife AI <span class="badge-version">v2.0 Real-Time</span></div>
+          <div class="brand-sub">AI Plastic Degradation Assessment &amp; TOPSIS Recycling Decision Support</div>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <div id="datasetPill" class="status-pill pill-neutral" title="Active ML Training Dataset">
+          <span class="dot"></span>
+          <span id="datasetPillText">Dataset: Built-in (1,800)</span>
+        </div>
+
+        <button id="firebaseStatusBtn" class="status-pill pill-sse" title="Configure Firebase Firestore Real-Time Sync">
+          <span class="dot pulse"></span>
+          <span id="firebaseStatusText">Sync: Local Real-Time (SSE)</span>
+        </button>
+
+        <button id="streamToggleBtn" class="btn btn-outline btn-sm">
+          <span class="stream-icon">●</span>
+          <span id="streamToggleLabel">Start Live Sensor Stream</span>
+        </button>
+
+        <button id="themeToggleBtn" class="btn btn-icon" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">◐</button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" data-tab="lab" role="tab" aria-selected="true">
+        <span>1. Live Degradation &amp; Recycling Lab</span>
+      </button>
+      <button class="nav-tab" data-tab="feed" role="tab" aria-selected="false">
+        <span>2. Real-Time Plant Feed</span>
+        <span id="feedCountBadge" class="tab-badge">0</span>
+      </button>
+      <button class="nav-tab" data-tab="kaggle" role="tab" aria-selected="false">
+        <span>3. Kaggle Dataset Hub</span>
+      </button>
+      <button class="nav-tab" data-tab="telemetry" role="tab" aria-selected="false">
+        <span>4. Model Telemetry &amp; TOPSIS Matrix</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: LIVE LAB SIMULATOR -->
+    <main id="tab-lab" class="tab-panel active">
+      <div class="lab-grid">
+        <!-- Left Control Panel -->
+        <section class="panel controls-panel">
+          <div class="panel-header">
+            <h2>Specimen &amp; Weathering Parameters</h2>
+            <button id="resetDemoBtn" class="btn btn-ghost btn-xs">Load Weathered PP Demo</button>
+          </div>
+
+          <div class="control-block">
+            <label class="field-label">Polymer Resin Class</label>
+            <div id="polymerSelector" class="polymer-grid">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <div class="control-block">
+            <div class="mode-switch-row">
+              <label class="field-label">Feature Input Mode</label>
+              <div class="segmented" id="spectralModeSwitch">
+                <button type="button" class="seg-btn active" data-mode="auto">Weathering Kinetics</button>
+                <button type="button" class="seg-btn" data-mode="manual">Direct Lab FTIR/DSC</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Environmental Weathering Sliders -->
+          <div class="sliders-group">
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Exposure Time (<i>t</i>)</span>
+                <span class="mono-val"><span id="val-t">1500</span> h</span>
+              </div>
+              <input id="input-t" type="range" min="0" max="2500" step="25" value="1500" />
+            </div>
+
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>UV Irradiance Factor (<i>I</i>)</span>
+                <span class="mono-val"><span id="val-I">1.00</span> ×</span>
+              </div>
+              <input id="input-I" type="range" min="0.4" max="1.6" step="0.05" value="1.0" />
+            </div>
+
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Ambient Temperature (<i>T</i>)</span>
+                <span class="mono-val"><span id="val-T">50</span> °C</span>
+              </div>
+              <input id="input-T" type="range" min="20" max="80" step="1" value="50" />
+            </div>
+
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Relative Humidity (<i>RH</i>)</span>
+                <span class="mono-val"><span id="val-RH">60</span> %</span>
+              </div>
+              <input id="input-RH" type="range" min="10" max="95" step="1" value="60" />
+            </div>
+          </div>
+
+          <!-- Manual FTIR/DSC Inputs (visible in manual mode) -->
+          <div id="manualSpectralPanel" class="manual-panel hidden">
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Carbonyl Index (CI)</span>
+                <span class="mono-val"><span id="val-CI">2.46</span></span>
+              </div>
+              <input id="input-CI" type="range" min="0" max="4.0" step="0.02" value="2.46" />
+            </div>
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Hydroxyl Index (HI)</span>
+                <span class="mono-val"><span id="val-HI">1.00</span></span>
+              </div>
+              <input id="input-HI" type="range" min="0" max="2.0" step="0.02" value="1.00" />
+            </div>
+            <div class="slider-row">
+              <div class="slider-head">
+                <span>Crystallinity Gain (Δ<i>X</i><sub>c</sub>)</span>
+                <span class="mono-val"><span id="val-dXc">5.4</span> %</span>
+              </div>
+              <input id="input-dXc" type="range" min="-2" max="12" step="0.1" value="5.4" />
+            </div>
+          </div>
+
+          <!-- TOPSIS Weights -->
+          <div class="control-block weights-block">
+            <div class="panel-header compact">
+              <h3>TOPSIS Decision Weights</h3>
+              <button id="resetWeightsBtn" class="btn btn-ghost btn-xs">Default</button>
+            </div>
+            <div class="weights-grid">
+              <div class="w-item">
+                <span>Yield <b id="wVal-0">30%</b></span>
+                <input class="weight-slider" data-idx="0" type="range" min="0" max="1" step="0.05" value="0.30" />
+              </div>
+              <div class="w-item">
+                <span>Cost <b id="wVal-1">15%</b></span>
+                <input class="weight-slider" data-idx="1" type="range" min="0" max="1" step="0.05" value="0.15" />
+              </div>
+              <div class="w-item">
+                <span>CO₂e <b id="wVal-2">20%</b></span>
+                <input class="weight-slider" data-idx="2" type="range" min="0" max="1" step="0.05" value="0.20" />
+              </div>
+              <div class="w-item">
+                <span>Energy <b id="wVal-3">10%</b></span>
+                <input class="weight-slider" data-idx="3" type="range" min="0" max="1" step="0.05" value="0.10" />
+              </div>
+              <div class="w-item">
+                <span>Quality <b id="wVal-4">25%</b></span>
+                <input class="weight-slider" data-idx="4" type="range" min="0" max="1" step="0.05" value="0.25" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Save Assessment to Firebase / DB -->
+          <div class="save-box">
+            <div class="save-inputs">
+              <input id="sampleNameInput" type="text" placeholder="Sample ID (e.g. PP-Line-A42)" />
+              <input id="batchIdInput" type="text" placeholder="Batch (e.g. LOT-2026)" />
+            </div>
+            <button id="saveAssessmentBtn" class="btn btn-primary btn-full">
+              Save &amp; Sync Assessment to Database
+            </button>
+          </div>
+        </section>
+
+        <!-- Right Live Results Workspace -->
+        <section class="results-workspace">
+          <!-- KPI Summary Row -->
+          <div class="kpi-row">
+            <div class="kpi-card">
+              <div class="kpi-label">Module 1 · Degradation Stage</div>
+              <div class="kpi-main">
+                <span id="res-stage-badge" class="stage-badge stage-severe">Severe</span>
+                <span id="res-poly-tag" class="mono-tag">PP · Resin #5</span>
+              </div>
+              <div id="res-stage-probs" class="prob-bars"></div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-label">Module 2 · Predicted <i>M</i><sub>w</sub> Retention</div>
+              <div class="kpi-main">
+                <span id="res-ret-pct" class="kpi-big">33.9%</span>
+                <span class="kpi-sub-col">
+                  <small>Kinetics: <b id="res-ret-kin">--</b></small>
+                  <small><i>t</i><sub>50</sub> (ML): <b id="res-t50">--</b></small>
+                </span>
+              </div>
+              <div class="ret-meter-track">
+                <div id="res-ret-bar" class="ret-meter-fill" style="width: 34%"></div>
+                <div class="ret-marker m50" title="50% Severe Threshold"></div>
+                <div class="ret-marker m80" title="80% Low/Moderate Threshold"></div>
+              </div>
+            </div>
+
+            <div class="kpi-card highlight-card">
+              <div class="kpi-label">Module 3 · Optimal Recycling Route</div>
+              <div class="kpi-main">
+                <span id="res-best-route" class="kpi-route">Chemical recycling</span>
+              </div>
+              <div class="kpi-foot">
+                TOPSIS Closeness: <b id="res-best-score" class="mono-val">0.612</b> ·
+                Yield <b id="res-best-yield">--</b> · CO₂e <b id="res-best-co2">--</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Spectral Indicators & Decay Chart Row -->
+          <div class="mid-grid">
+            <div class="panel chart-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Real-Time <i>M</i><sub>w</sub> Retention &amp; Photo-Oxidation Kinetics</h3>
+                  <span class="sub-hint">ML Gradient Boosting vs True Arrhenius Kinetics vs Dose-Only Baseline</span>
+                </div>
+                <div class="chart-legend">
+                  <span class="leg"><i class="swatch sw-ml"></i>ML Prediction</span>
+                  <span class="leg"><i class="swatch sw-true"></i>True Kinetics</span>
+                  <span class="leg"><i class="swatch sw-kin"></i>Dose-Only Baseline</span>
+                </div>
+              </div>
+              <div class="chart-wrap">
+                <svg id="kineticsChart" viewBox="0 0 680 280" preserveAspectRatio="none"></svg>
+                <div id="chartTooltip" class="chart-tooltip hidden"></div>
+              </div>
+            </div>
+
+            <div class="panel spectral-panel">
+              <div class="panel-header">
+                <h3>FTIR &amp; DSC Spectral Signature</h3>
+                <span id="spectralSourceTag" class="badge-chip">Simulated</span>
+              </div>
+              <div class="spectral-bars">
+                <div class="spec-item">
+                  <div class="spec-head"><span>Carbonyl Index (CI)</span><b id="spec-ci" class="mono-val">2.46</b></div>
+                  <div class="spec-track"><div id="spec-ci-bar" class="spec-fill ci"></div></div>
+                  <small>1715 cm⁻¹ / ref band · Max <span id="spec-ci-max">3.2</span></small>
+                </div>
+                <div class="spec-item">
+                  <div class="spec-head"><span>Hydroxyl Index (HI)</span><b id="spec-hi" class="mono-val">1.00</b></div>
+                  <div class="spec-track"><div id="spec-hi-bar" class="spec-fill hi"></div></div>
+                  <small>3400 cm⁻¹ hydroperoxide · Max <span id="spec-hi-max">1.3</span></small>
+                </div>
+                <div class="spec-item">
+                  <div class="spec-head"><span>Crystallinity Gain (Δ<i>X</i><sub>c</sub>)</span><b id="spec-dxc" class="mono-val">5.4%</b></div>
+                  <div class="spec-track"><div id="spec-dxc-bar" class="spec-fill dxc"></div></div>
+                  <small>Chemi-crystallization · Max <span id="spec-dxc-max">7.0</span>%</small>
+                </div>
+              </div>
+              <div class="chemistry-note">
+                <strong>Arrhenius Rate Insight:</strong> Photo-oxidation scales with UV irradiance <i>I</i>, temperature <i>T</i> (E<sub>a</sub> = 30 kJ/mol), and humidity <i>RH</i>.
+              </div>
+            </div>
+          </div>
+
+          <!-- TOPSIS Route Ranking Cards -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>TOPSIS Multi-Criteria Recycling Pathway Evaluation</h3>
+                <span class="sub-hint">Real-time closeness score C<sub>i</sub>* across yield, processing cost, carbon footprint, energy, and recyclate quality</span>
+              </div>
+            </div>
+            <div id="topsisRoutesGrid" class="routes-grid">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- TAB 2: REAL-TIME PLANT FEED -->
+    <main id="tab-feed" class="tab-panel">
+      <div class="feed-kpis">
+        <div class="mini-kpi"><span>Total Screened Samples</span><b id="kpiTotal">0</b></div>
+        <div class="mini-kpi"><span>Mechanical Recovery Share</span><b id="kpiMech">0%</b></div>
+        <div class="mini-kpi"><span>Severe Degradation Alerts</span><b id="kpiSevere" class="text-danger">0</b></div>
+        <div class="mini-kpi"><span>Mean <i>M</i><sub>w</sub> Retention</span><b id="kpiMeanRet">0%</b></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Real-Time Assessment &amp; Sensor Stream Log</h3>
+            <span class="sub-hint">Synced live via Firebase Firestore (when configured) and local SSE stream</span>
+          </div>
+          <div class="feed-controls">
+            <select id="filterPoly">
+              <option value="ALL">All Polymers</option>
+              <option value="HDPE">HDPE</option>
+              <option value="LDPE">LDPE</option>
+              <option value="PP">PP</option>
+              <option value="PS">PS</option>
+              <option value="PET">PET</option>
+              <option value="PVC">PVC</option>
+            </select>
+            <select id="filterStage">
+              <option value="ALL">All Stages</option>
+              <option value="Low">Low</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Severe">Severe</option>
+            </select>
+            <button id="pulseSensorBtn" class="btn btn-outline btn-sm">+ Simulate Sensor Pulse</button>
+            <button id="exportCsvBtn" class="btn btn-ghost btn-sm">Export CSV</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Sample / Batch</th>
+                <th>Polymer</th>
+                <th>CI / HI</th>
+                <th><i>M</i><sub>w</sub> Ret.</th>
+                <th>Stage</th>
+                <th>Recommended Route</th>
+                <th>Source</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="feedTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: KAGGLE DATASET HUB -->
+    <main id="tab-kaggle" class="tab-panel">
+      <div class="kaggle-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>Curated Kaggle Datasets for PolyLife AI</h3>
+              <span class="sub-hint">Click a Kaggle catalog card or enter any Kaggle dataset slug / CSV file</span>
+            </div>
+          </div>
+          <div id="kaggleCatalogGrid" class="catalog-grid"></div>
+
+          <div class="divider"></div>
+
+          <div class="kaggle-import-forms">
+            <div class="import-box">
+              <h4>Option A · Fetch Directly via Kaggle API</h4>
+              <p class="sub-hint">Uses your Kaggle API credentials (never stored permanently unless saved in <code>~/.kaggle/kaggle.json</code>).</p>
+              <div class="form-stack">
+                <input id="kaggleSlugInput" type="text" placeholder="Kaggle slug: e.g. owner/dataset-name" />
+                <div class="two-col">
+                  <input id="kaggleUserInput" type="text" placeholder="Kaggle Username (optional if ~/.kaggle exists)" />
+                  <input id="kaggleKeyInput" type="password" placeholder="Kaggle API Key" />
+                </div>
+                <button id="fetchKaggleBtn" class="btn btn-primary">Download &amp; Profile Kaggle Dataset</button>
+              </div>
+            </div>
+
+            <div class="import-box">
+              <h4>Option B · Upload Downloaded Kaggle CSV</h4>
+              <p class="sub-hint">Download any CSV from Kaggle and drop it here to inspect columns and retrain PolyLife ML models.</p>
+              <label id="csvDropZone" class="drop-zone">
+                <input id="csvFileInput" type="file" accept=".csv" hidden />
+                <span>Drop a Kaggle <code>.csv</code> file here or <u>click to browse</u></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>Column Mapper &amp; Live ML Retraining</h3>
+              <span class="sub-hint" id="mapperSubtitle">Upload or fetch a Kaggle CSV to map features, or restore the built-in chemistry dataset.</span>
+            </div>
+            <button id="restoreBuiltinBtn" class="btn btn-outline btn-xs">Restore Built-in Dataset</button>
+          </div>
+
+          <div id="mapperContainer" class="mapper-empty">
+            <p>No external CSV loaded in this session yet. Use Option A or Option B on the left to load a Kaggle dataset, inspect its rows, and retrain the Random Forest &amp; Gradient Boosting models.</p>
+          </div>
+
+          <div class="divider"></div>
+          <h4>Recent Dataset Imports</h4>
+          <div id="datasetLogsList" class="logs-list"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- TAB 4: TELEMETRY & TOPSIS MATRIX -->
+    <main id="tab-telemetry" class="tab-panel">
+      <div class="telemetry-top">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Module 1 · Degradation Classifier Benchmark</h3>
+          </div>
+          <div id="m1MetricsBody" class="metrics-body"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Module 2 · <i>M</i><sub>w</sub> Retention Regression Benchmark</h3>
+          </div>
+          <div id="m2MetricsBody" class="metrics-body"></div>
+        </div>
+      </div>
+
+      <div class="telemetry-mid">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Confusion Matrix (Test Set 25%)</h3>
+          </div>
+          <div id="confusionMatrixBox"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Random Forest Feature Importance</h3>
+          </div>
+          <div id="featureImportanceBox"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Module 3 · 18-Case Polymer × Stage TOPSIS Decision Matrix</h3>
+            <span class="sub-hint" id="m3StabilityNote">Rank-1 sensitivity stability across ±20% weight perturbations</span>
+          </div>
+        </div>
+        <div id="topsisMatrixBox" class="table-wrap"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Firebase Configuration Modal -->
+  <div id="firebaseModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Firebase Firestore Real-Time Database Setup</h3>
+          <p class="sub-hint">Connect your Firebase project so all assessments, sensor pulses, and TOPSIS weights sync live across browsers via Firestore <code>onSnapshot</code>.</p>
+        </div>
+        <button id="closeFirebaseModal" class="btn btn-icon">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <label class="field-label">Paste your Firebase Web App <code>firebaseConfig</code> JSON</label>
+        <textarea id="firebaseConfigTextarea" rows="8" spellcheck="false" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-project.firebaseapp.com",
+  "projectId": "your-project",
+  "storageBucket": "your-project.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123456789:web:abcdef"
+}'></textarea>
+
+        <div class="modal-tips">
+          <strong>Firestore Rules tip (for testing):</strong> Ensure Firestore Database is created in Firebase Console and rules allow read/write on <code>polylife_assessments</code>, <code>polylife_weights</code>, and <code>polylife_datasets</code>.
+        </div>
+        <div id="firebaseModalMsg" class="modal-msg hidden"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="disconnectFirebaseBtn" class="btn btn-ghost">Disconnect</button>
+        <button id="seedFirestoreBtn" class="btn btn-outline">Push Local Samples to Firestore</button>
+        <button id="saveFirebaseBtn" class="btn btn-primary">Connect &amp; Enable Live Sync</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script type="module" src="/static/firebase-bridge.js"></script>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

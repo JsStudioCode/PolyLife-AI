@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.cache/
+*.joblib
+
+# Local runtime DB & secrets
+polylife_rt.db
+firebase_config.json
+firebase-debug.log
+firestore-debug.log
+.env
+data/*.csv
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
